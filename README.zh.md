@@ -2,6 +2,11 @@
 
 agent-wt 是一个 macOS 优先的 CLI，将每个 Git worktree 映射为一个独立的 AI 代理工作区。这样做可以让多个代理并行运行，避免上下文冲突、文件覆盖和分支干扰。
 
+[![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+[![Python](https://img.shields.io/badge/Python-%3E%3D3.8-blue)](#安装)
+[![Platform](https://img.shields.io/badge/platform-macOS-lightgrey)](#当前功能)
+[![CLI](https://img.shields.io/badge/agent--wt-CLI-brightgreen)](#命令)
+
 ## 当前功能
 - 仅在 macOS 运行；确保在 Git 仓库中执行，并将注册信息写入 `.git/agent-wt/config.json`，所有 worktree 共享同一份注册表。
 - 为每个代理创建独立 worktree，并绑定启动命令（默认支持 `codex`、`claude`、`gemini`，可用环境变量覆盖默认命令，例如 `AGENT_WT_CMD_CODEX="codex --profile myprofile"`）。

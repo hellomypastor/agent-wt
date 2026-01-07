@@ -1,6 +1,11 @@
 # agent-wt
 agent-wt is a macOS-first CLI that treats each Git worktree as an isolated execution sandbox for AI agents. It enables safe, parallel AI workflows by mapping one agent to one worktree—eliminating context conflicts, file collisions, and branch interference.
 
+[![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+[![Python](https://img.shields.io/badge/Python-%3E%3D3.8-blue)](#install)
+[![Platform](https://img.shields.io/badge/platform-macOS-lightgrey)](#what-this-build-does)
+[![CLI](https://img.shields.io/badge/agent--wt-CLI-brightgreen)](#usage)
+
 [中文版 README](README.zh.md)
 
 ## What this build does
