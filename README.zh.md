@@ -12,6 +12,7 @@ agent-wt 是一个 macOS 优先的 CLI，将每个 Git worktree 映射为一个�
 - 为每个代理创建独立 worktree，并绑定启动命令（默认支持 `codex`、`claude`、`gemini`，可用环境变量覆盖默认命令，例如 `AGENT_WT_CMD_CODEX="codex --profile myprofile"`）。
 - 可以在当前进程、macOS Terminal 或 iTerm 中启动代理，会自动切换到对应 worktree 目录。
 - GUI（Tkinter）可列出、创建、启动、修改命令/环境并取消跟踪 worktree，并显示脏状态/领先/落后信息，还能一键打开 Terminal/iTerm、执行 git status/diff/commit/push。
+- 可选启用 `sandbox-exec`，将写入范围限制在 worktree 与 git 元数据目录（并可选择禁用网络）。
 
 ## 安装
 需要 Python 3.8+。在仓库根目录执行：
@@ -68,19 +69,33 @@ agent-wt push feat-b
 ```
 之后可通过 `agent-wt run feat-a --launch terminal`（或 GUI 按钮）重新进入。
 
+### sandbox-exec 模式（macOS）
+通过 `sandbox-exec` 包裹代理命令，只允许写入 worktree、git common 目录与临时目录，适合限制自动化改动范围。
+```bash
+# 启用内置 sandbox profile
+agent-wt create story-safe --agent codex --sandbox --start
+
+# 在 sandbox 中禁用网络
+agent-wt run story-safe --sandbox-no-network
+
+# 允许额外写入目录（可重复）
+agent-wt set story-safe --sandbox --sandbox-write ~/Library/Caches
+```
+自动生成的 profile 存放在 `.git/agent-wt/sandbox/<name>.sb`，也可以用 `--sandbox-profile /path/to/profile.sb` 指定自定义 profile。
+
 ## 命令
-- `agent-wt create <name> [--agent codex|claude|gemini] [--base <ref>] [--branch <branch>] [--path <dir>] [--start] [--cmd "<command>"] [--launch spawn|terminal|iterm] [--allow-dirty]`  
+- `agent-wt create <name> [--agent codex|claude|gemini] [--base <ref>] [--branch <branch>] [--path <dir>] [--start] [--cmd "<command>"] [--launch spawn|terminal|iterm] [--allow-dirty] [--sandbox|--no-sandbox] [--sandbox-profile <path>] [--sandbox-write <path>] [--sandbox-no-network|--sandbox-network]`  
   - 创建 worktree（默认分支 `wt/<name>`，默认路径为 `<repo>-<name>` 的同级目录）。
   - 将配置写入 `.git/agent-wt/config.json`。
   - `--start` 会立即用指定启动方式运行；默认有脏树保护，使用 `--allow-dirty` 可跳过。
-- `agent-wt run <name> [--cmd "<command>"] [--agent <agent>] [--launch spawn|terminal|iterm] [--allow-dirty]`  
+- `agent-wt run <name> [--cmd "<command>"] [--agent <agent>] [--launch spawn|terminal|iterm] [--allow-dirty] [--sandbox|--no-sandbox] [--sandbox-profile <path>] [--sandbox-write <path>] [--sandbox-no-network|--sandbox-network]`  
   - 在对应 worktree 中启动代理命令。
 - `agent-wt list [--json]`  
   - 展示所有条目、路径存在性、脏状态、领先/落后信息。
 - `agent-wt info <name> [--json]`  
   - 查看单个条目的详细信息。
-- `agent-wt set <name> [--agent <agent>] [--cmd "<command>"] [--path <path>]`  
-  - 更新已跟踪条目的代理、命令或路径。
+- `agent-wt set <name> [--agent <agent>] [--cmd "<command>"] [--path <path>] [--sandbox|--no-sandbox] [--sandbox-profile <path>] [--sandbox-write <path>] [--sandbox-no-network|--sandbox-network]`  
+  - 更新已跟踪条目的代理、命令、路径或 sandbox 配置。
 - `agent-wt set-env <name> KEY=VAL ... [--unset KEY ...]`  
   - 增删改工作区的环境变量（启动时合并）。
 - `agent-wt remove <name> [--delete-path] [--delete-branch] [--prune] [--force]`  

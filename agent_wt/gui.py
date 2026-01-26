@@ -26,6 +26,11 @@ def run_gui(ctx):
 
     launch_var = tk.StringVar(root, value="spawn")
     allow_dirty_var = tk.BooleanVar(root, value=False)
+    sandbox_var = tk.BooleanVar(root, value=False)
+    no_sandbox_var = tk.BooleanVar(root, value=False)
+    sandbox_no_network_var = tk.BooleanVar(root, value=False)
+    sandbox_profile_var = tk.StringVar(root, value="")
+    sandbox_write_var = tk.StringVar(root, value="")
 
     columns = ("name", "branch", "agent", "status", "dirty", "ahead", "behind", "path")
     tree = ttk.Treeview(root, columns=columns, show="headings")
@@ -48,6 +53,7 @@ def run_gui(ctx):
             messagebox.showinfo("agent-wt", "Select a worktree to run.")
             return
         name = sel[0]
+        write_paths = [item.strip() for item in sandbox_write_var.get().split(",") if item.strip()]
         try:
             handle_run(
                 argparse.Namespace(
@@ -57,6 +63,12 @@ def run_gui(ctx):
                     wait=False,
                     launch=launch_var.get(),
                     allow_dirty=allow_dirty_var.get(),
+                    sandbox=sandbox_var.get(),
+                    no_sandbox=no_sandbox_var.get(),
+                    sandbox_profile=sandbox_profile_var.get().strip() or None,
+                    sandbox_write=write_paths or None,
+                    sandbox_no_network=sandbox_no_network_var.get(),
+                    sandbox_network=False,
                 ),
                 ctx,
             )
@@ -173,6 +185,7 @@ def run_gui(ctx):
             if not name_val:
                 messagebox.showerror("agent-wt", "Name is required.")
                 return
+            write_paths = [item.strip() for item in sandbox_write_var.get().split(",") if item.strip()]
             ns = argparse.Namespace(
                 name=name_val,
                 agent=entries["Agent"].get().strip() or "codex",
@@ -184,6 +197,12 @@ def run_gui(ctx):
                 allow_dirty=allow_dirty_var.get(),
                 use_existing_branch=False,
                 launch=launch_var.get(),
+                sandbox=sandbox_var.get(),
+                no_sandbox=no_sandbox_var.get(),
+                sandbox_profile=sandbox_profile_var.get().strip() or None,
+                sandbox_write=write_paths or None,
+                sandbox_no_network=sandbox_no_network_var.get(),
+                sandbox_network=False,
             )
             try:
                 handle_create(ns, ctx)
@@ -240,6 +259,13 @@ def run_gui(ctx):
         width=10,
     ).pack(side="left", padx=4)
     tk.Checkbutton(btns, text="Allow dirty", variable=allow_dirty_var).pack(side="left", padx=4)
+    tk.Checkbutton(btns, text="Sandbox", variable=sandbox_var).pack(side="left", padx=4)
+    tk.Checkbutton(btns, text="No sandbox", variable=no_sandbox_var).pack(side="left", padx=4)
+    tk.Checkbutton(btns, text="No network", variable=sandbox_no_network_var).pack(side="left", padx=4)
+    tk.Label(btns, text="Profile").pack(side="left", padx=4)
+    tk.Entry(btns, textvariable=sandbox_profile_var, width=16).pack(side="left", padx=4)
+    tk.Label(btns, text="Write paths").pack(side="left", padx=4)
+    tk.Entry(btns, textvariable=sandbox_write_var, width=18).pack(side="left", padx=4)
     tk.Button(btns, text="Refresh", command=refresh).pack(side="left", padx=4)
     tk.Button(btns, text="Run Selected", command=run_selected).pack(side="left", padx=4)
     tk.Button(btns, text="Create...", command=open_create_dialog).pack(side="left", padx=4)

@@ -47,6 +47,7 @@ def serialize_worktree(name: str, entry: Dict[str, Any]) -> Dict[str, Any]:
         "agent": entry.get("agent", ""),
         "command": entry.get("command", ""),
         "env": entry.get("env", {}),
+        "sandbox": entry.get("sandbox", {}),
         "createdAt": entry.get("createdAt", ""),
         "status": "ready" if exists else "missing",
         "dirty": git_state.get("dirty"),

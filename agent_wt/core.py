@@ -87,7 +87,133 @@ def merged_env(entry: Dict[str, Any]) -> Dict[str, str]:
     return merged
 
 
-def run_in_macos_app(worktree_path: Path, command: str, app: str, *, entry: Dict[str, Any]) -> None:
+def normalize_sandbox_entry(raw: Any) -> Dict[str, Any]:
+    if not isinstance(raw, dict):
+        raw = {}
+    write_paths = raw.get("write")
+    if not isinstance(write_paths, list):
+        write_paths = []
+    return {
+        "enabled": bool(raw.get("enabled", False)),
+        "profile": str(raw.get("profile", "")) if raw.get("profile") else "",
+        "deny_network": bool(raw.get("deny_network", False)),
+        "write": [str(path) for path in write_paths if path],
+    }
+
+
+def normalize_write_paths(paths: List[str]) -> List[str]:
+    normalized = []
+    for item in paths:
+        if not item:
+            continue
+        normalized.append(str(Path(item).expanduser().resolve()))
+    return normalized
+
+
+def apply_sandbox_args(base: Dict[str, Any], ns) -> Dict[str, Any]:
+    sandbox = normalize_sandbox_entry(base)
+    if getattr(ns, "no_sandbox", False):
+        return {"enabled": False, "profile": "", "deny_network": False, "write": []}
+    if getattr(ns, "sandbox", False):
+        sandbox["enabled"] = True
+    if getattr(ns, "sandbox_profile", None):
+        sandbox["profile"] = ns.sandbox_profile
+        sandbox["enabled"] = True
+    if getattr(ns, "sandbox_write", None) is not None:
+        sandbox["write"] = normalize_write_paths(list(ns.sandbox_write))
+        sandbox["enabled"] = True
+    if getattr(ns, "sandbox_no_network", False):
+        sandbox["deny_network"] = True
+        sandbox["enabled"] = True
+    if getattr(ns, "sandbox_network", False):
+        sandbox["deny_network"] = False
+        sandbox["enabled"] = True
+    return sandbox
+
+
+def escape_sbpl_string(value: str) -> str:
+    return value.replace("\\", "\\\\").replace('"', '\\"')
+
+
+def build_sandbox_profile(
+    worktree_path: Path,
+    common_dir: Path,
+    *,
+    deny_network: bool,
+    extra_writes: List[str],
+) -> str:
+    allow_writes = [
+        worktree_path,
+        common_dir,
+        Path("/tmp"),
+        Path("/private/tmp"),
+        Path("/var/folders"),
+        Path("/private/var/folders"),
+    ]
+    allow_writes += [Path(path) for path in extra_writes]
+
+    lines = [
+        "(version 1)",
+        "(deny default)",
+        "(allow process*)",
+        "(allow mach-lookup)",
+        "(allow ipc-posix*)",
+        "(allow sysctl-read)",
+        "(allow file-read*)",
+    ]
+    if not deny_network:
+        lines.append("(allow network*)")
+    for path in allow_writes:
+        escaped = escape_sbpl_string(str(path))
+        lines.append(f'(allow file-write* (subpath "{escaped}"))')
+    return "\n".join(lines) + "\n"
+
+
+def ensure_sandbox_profile(ctx: Ctx, name: str, worktree_path: Path, sandbox: Dict[str, Any]) -> Path | None:
+    sandbox = normalize_sandbox_entry(sandbox)
+    if not sandbox.get("enabled"):
+        return None
+    if shutil.which("sandbox-exec") is None:
+        raise UserError("sandbox-exec is required for --sandbox.")
+    common_dir = ctx.common_dir
+    if not common_dir.is_absolute():
+        common_dir = (ctx.root / common_dir).resolve()
+    profile_override = sandbox.get("profile") or ""
+    if profile_override:
+        profile_path = Path(profile_override).expanduser().resolve()
+        if not profile_path.exists():
+            raise UserError(f"sandbox profile does not exist: {profile_path}")
+        return profile_path
+    profile_dir = common_dir / "agent-wt" / "sandbox"
+    profile_path = profile_dir / f"{name}.sb"
+    profile_body = build_sandbox_profile(
+        worktree_path,
+        common_dir,
+        deny_network=bool(sandbox.get("deny_network", False)),
+        extra_writes=sandbox.get("write") or [],
+    )
+    profile_dir.mkdir(parents=True, exist_ok=True)
+    if profile_path.exists():
+        existing = profile_path.read_text(encoding="utf-8")
+        if existing == profile_body:
+            return profile_path
+    profile_path.write_text(profile_body, encoding="utf-8")
+    return profile_path
+
+
+def wrap_command_with_sandbox(command: str, profile_path: Path) -> str:
+    quoted_cmd = shlex.quote(command)
+    return f"sandbox-exec -f {shlex.quote(str(profile_path))} /bin/sh -c {quoted_cmd}"
+
+
+def run_in_macos_app(
+    worktree_path: Path,
+    command: str,
+    app: str,
+    *,
+    entry: Dict[str, Any],
+    sandbox_profile: Path | None = None,
+) -> None:
     app = app.lower()
     if app == "spawn":
         return
@@ -99,6 +225,8 @@ def run_in_macos_app(worktree_path: Path, command: str, app: str, *, entry: Dict
     env_parts = " ".join([f"{shlex.quote(k)}={shlex.quote(v)}" for k, v in (entry.get("env") or {}).items()])
     prefix = f"{env_parts} " if env_parts else ""
     shell_cmd = f"cd {shlex.quote(str(worktree_path))} && {prefix}{command}"
+    if sandbox_profile:
+        shell_cmd = wrap_command_with_sandbox(shell_cmd, sandbox_profile)
     quoted = escape_for_applescript(shell_cmd)
 
     if app == "terminal":
@@ -167,6 +295,7 @@ def handle_create(ns, ctx: Ctx):
 
     cfg_path = config_path(ctx)
     config = read_config(cfg_path)
+    sandbox = apply_sandbox_args({}, ns)
     config["worktrees"][name] = {
         "path": str(target_path),
         "branch": branch,
@@ -174,6 +303,7 @@ def handle_create(ns, ctx: Ctx):
         "agent": agent,
         "command": command,
         "env": {},
+        "sandbox": sandbox,
         "createdAt": subprocess.run(["date", "-u", "+%Y-%m-%dT%H:%M:%SZ"], text=True, capture_output=True).stdout.strip(),
     }
     write_config(cfg_path, config)
@@ -217,12 +347,17 @@ def handle_run(ns, ctx: Ctx, *, wait: Optional[bool] = None):
         if state.get("dirty"):
             raise UserError("Worktree is dirty. Commit/stash or re-run with --allow-dirty.")
 
+    sandbox = apply_sandbox_args(entry.get("sandbox", {}), ns)
+    sandbox_profile = ensure_sandbox_profile(ctx, name, worktree_path, sandbox)
+
     if launch != "spawn":
         log(f'Starting {agent} in {worktree_path} via {launch} using "{command}"...')
-        run_in_macos_app(worktree_path, command, launch, entry=entry)
+        run_in_macos_app(worktree_path, command, launch, entry=entry, sandbox_profile=sandbox_profile)
         return
 
     log(f'Starting {agent} in {worktree_path} using "{command}"...')
+    if sandbox_profile:
+        command = wrap_command_with_sandbox(command, sandbox_profile)
     env = merged_env(entry)
     proc = subprocess.Popen(command, cwd=worktree_path, shell=True, env=env)  # noqa: S602
     if wait is None:
@@ -262,6 +397,8 @@ def handle_info(ns, ctx: Ctx):
     log(f"dirty:   {data.get('dirty')}")
     log(f"ahead:   {data.get('ahead')}, behind: {data.get('behind')}, upstream: {data.get('upstream')}")
     log(f"command: {data['command'] or '(not set)'}")
+    if data.get("sandbox"):
+        log(f"sandbox: {data['sandbox']}")
     log(f"created: {data['createdAt'] or '(unknown)'}")
 
 
@@ -286,8 +423,12 @@ def handle_set(ns, ctx: Ctx):
     if ns.path:
         entry["path"] = str(Path(ns.path).expanduser().resolve())
         changed = True
+    sandbox = apply_sandbox_args(entry.get("sandbox", {}), ns)
+    if sandbox != normalize_sandbox_entry(entry.get("sandbox", {})):
+        entry["sandbox"] = sandbox
+        changed = True
     if not changed:
-        raise UserError("Nothing to update. Provide --agent, --cmd, or --path.")
+        raise UserError("Nothing to update. Provide --agent, --cmd, --path, or --sandbox options.")
 
     cfg["worktrees"][name] = entry
     write_config(cfg_path, cfg)
