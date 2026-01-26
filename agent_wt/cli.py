@@ -51,6 +51,19 @@ def build_parser() -> argparse.ArgumentParser:
         default="spawn",
         help="How to launch the agent when using --start (spawn in-place, Terminal, or iTerm).",
     )
+    create_sandbox = create.add_mutually_exclusive_group()
+    create_sandbox.add_argument("--sandbox", action="store_true", help="Run the agent via sandbox-exec.")
+    create_sandbox.add_argument("--no-sandbox", action="store_true", help="Disable sandbox-exec for this worktree.")
+    create.add_argument("--sandbox-profile", help="Path to a custom sandbox-exec profile.")
+    create.add_argument(
+        "--sandbox-write",
+        action="append",
+        default=None,
+        help="Additional writable paths for the built-in sandbox profile (repeatable).",
+    )
+    create_network = create.add_mutually_exclusive_group()
+    create_network.add_argument("--sandbox-no-network", action="store_true", help="Disable network access in the sandbox.")
+    create_network.add_argument("--sandbox-network", action="store_true", help="Allow network access in the sandbox.")
 
     run = sub.add_parser("run", help="Start the agent inside its worktree.")
     run.add_argument("name", help="Worktree label.")
@@ -63,6 +76,19 @@ def build_parser() -> argparse.ArgumentParser:
         default="spawn",
         help="Launch via current process (spawn), Terminal, or iTerm.",
     )
+    run_sandbox = run.add_mutually_exclusive_group()
+    run_sandbox.add_argument("--sandbox", action="store_true", help="Run the agent via sandbox-exec.")
+    run_sandbox.add_argument("--no-sandbox", action="store_true", help="Disable sandbox-exec for this run.")
+    run.add_argument("--sandbox-profile", help="Path to a custom sandbox-exec profile.")
+    run.add_argument(
+        "--sandbox-write",
+        action="append",
+        default=None,
+        help="Additional writable paths for the built-in sandbox profile (repeatable).",
+    )
+    run_network = run.add_mutually_exclusive_group()
+    run_network.add_argument("--sandbox-no-network", action="store_true", help="Disable network access in the sandbox.")
+    run_network.add_argument("--sandbox-network", action="store_true", help="Allow network access in the sandbox.")
 
     list_cmd = sub.add_parser("list", help="List tracked worktrees.")
     list_cmd.add_argument("--json", dest="json_output", action="store_true", help="Output JSON.")
@@ -71,11 +97,24 @@ def build_parser() -> argparse.ArgumentParser:
     info.add_argument("name", help="Worktree label.")
     info.add_argument("--json", dest="json_output", action="store_true", help="Output JSON.")
 
-    set_cmd = sub.add_parser("set", help="Update tracked metadata (agent/command/path).")
+    set_cmd = sub.add_parser("set", help="Update tracked metadata (agent/command/path/sandbox).")
     set_cmd.add_argument("name", help="Worktree label to update.")
     set_cmd.add_argument("--agent", help="New agent label (codex|claude|gemini).")
     set_cmd.add_argument("--cmd", help="New command to launch the agent.")
     set_cmd.add_argument("--path", help="Override path if moved.")
+    set_sandbox = set_cmd.add_mutually_exclusive_group()
+    set_sandbox.add_argument("--sandbox", action="store_true", help="Enable sandbox-exec for this worktree.")
+    set_sandbox.add_argument("--no-sandbox", action="store_true", help="Disable sandbox-exec for this worktree.")
+    set_cmd.add_argument("--sandbox-profile", help="Path to a custom sandbox-exec profile.")
+    set_cmd.add_argument(
+        "--sandbox-write",
+        action="append",
+        default=None,
+        help="Additional writable paths for the built-in sandbox profile (repeatable).",
+    )
+    set_network = set_cmd.add_mutually_exclusive_group()
+    set_network.add_argument("--sandbox-no-network", action="store_true", help="Disable network access in the sandbox.")
+    set_network.add_argument("--sandbox-network", action="store_true", help="Allow network access in the sandbox.")
 
     set_env = sub.add_parser("set-env", help="Update per-worktree environment variables.")
     set_env.add_argument("name", help="Worktree label to update.")

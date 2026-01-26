@@ -15,6 +15,7 @@ agent-wt is a macOS-first CLI that treats each Git worktree as an isolated execu
 - Runs your chosen agent CLI from inside the worktree so context never collides with other agents/branches.
 - Can launch agents in-place or in macOS Terminal/iTerm tabs, keeping sessions separate. Default agent commands can be overridden via env (e.g., `AGENT_WT_CMD_CODEX="codex --profile myprofile"`).
 - Includes a minimal GUI (Tkinter) for listing, creating, launching, editing commands/env, and untracking agent worktrees on macOS, showing dirty/ahead/behind status.
+- Optional sandboxing via `sandbox-exec` to restrict writes to the worktree (and git metadata), with opt-in network blocking.
 
 ## Install
 Use the Python CLI directly (requires Python 3.8+). From the repo root:
@@ -72,19 +73,33 @@ agent-wt push feat-b
 ```
 Reopen later with `agent-wt run feat-a --launch terminal` (or via GUI buttons).
 
+### Sandbox-exec mode (macOS)
+You can wrap agent commands with `sandbox-exec` so they can only write to the worktree, git common dir, and temp locations. This is useful to keep automated edits scoped.
+```bash
+# enable built-in sandbox profile
+agent-wt create story-safe --agent codex --sandbox --start
+
+# disable network inside the sandbox
+agent-wt run story-safe --sandbox-no-network
+
+# allow additional writable paths (repeatable)
+agent-wt set story-safe --sandbox --sandbox-write ~/Library/Caches
+```
+Generated profiles live at `.git/agent-wt/sandbox/<name>.sb`. Use `--sandbox-profile /path/to/profile.sb` to provide your own profile.
+
 ### Commands
-- `agent-wt create <name> [--agent codex|claude|gemini] [--base <ref>] [--branch <branch>] [--path <dir>] [--start] [--cmd "<command>"] [--launch spawn|terminal|iterm]`  
+- `agent-wt create <name> [--agent codex|claude|gemini] [--base <ref>] [--branch <branch>] [--path <dir>] [--start] [--cmd "<command>"] [--launch spawn|terminal|iterm] [--allow-dirty] [--sandbox|--no-sandbox] [--sandbox-profile <path>] [--sandbox-write <path>] [--sandbox-no-network|--sandbox-network]`  
   - Creates a git worktree (branch defaults to `wt/<name>`; path defaults to a sibling folder `<repo>-<name>`).
   - Records the sandbox in `.git/agent-wt/config.json`.
   - `--start` immediately launches the agent command inside the new worktree using the selected launcher (`spawn`, `terminal`, or `iterm`). Use `--allow-dirty` to bypass the dirty guard.
-- `agent-wt run <name> [--cmd "<command>"] [--agent <agent>] [--launch spawn|terminal|iterm] [--allow-dirty]`  
+- `agent-wt run <name> [--cmd "<command>"] [--agent <agent>] [--launch spawn|terminal|iterm] [--allow-dirty] [--sandbox|--no-sandbox] [--sandbox-profile <path>] [--sandbox-write <path>] [--sandbox-no-network|--sandbox-network]`  
   - Starts the configured agent CLI in the tracked worktree (cwd is set to the worktree).
   - If no `--cmd` is given, uses the command remembered from creation or the default for the agent (`codex`, `claude`, `gemini`).
 - `agent-wt list [--json]`  
   - Shows tracked worktrees, path presence, dirty state, and ahead/behind if an upstream is set.
 - `agent-wt info <name> [--json]`  
   - Prints a single entry with its config.
-- `agent-wt set <name> [--agent <agent>] [--cmd "<command>"] [--path <path>]`  
+- `agent-wt set <name> [--agent <agent>] [--cmd "<command>"] [--path <path>] [--sandbox|--no-sandbox] [--sandbox-profile <path>] [--sandbox-write <path>] [--sandbox-no-network|--sandbox-network]`  
   - Updates tracked metadata, e.g., change the agent label or command.
 - `agent-wt set-env <name> KEY=VAL ... [--unset KEY ...]`  
   - Adds/updates/removes per-worktree environment variables (merged when launching).
